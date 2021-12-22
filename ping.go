@@ -12,31 +12,19 @@ import (
 	pk "github.com/Tnze/go-mc/net/packet"
 )
 
-// PingAndList check server status and list online player.
-// Returns server status and delay.
-// The addr has the form "host:port". The port are required.
-func PingAndList(addr string, protocol int) (*Status, time.Duration, error) {
-	conn, err := mcnet.DialMC(addr)
-	if err != nil {
-		return nil, 0, fmt.Errorf("bot: dial fail: %v", err)
-	}
-	return pingAndList(addr, conn, protocol)
-}
-
 // PingAndListConn is the version of PingAndList using a exist connection.
-func PingAndListConn(conn net.Conn, protocol int) (*Status, time.Duration, error) {
+func PingAndListConn(conn net.Conn, protocol int, host string) (*Status, time.Duration, error) {
 	addr := conn.RemoteAddr().String()
 	mcConn := mcnet.WrapConn(conn)
-	return pingAndList(addr, mcConn, protocol)
+	return pingAndList(addr, mcConn, protocol, host)
 }
 
-func pingAndList(addr string, conn *mcnet.Conn, protocol int) (*Status, time.Duration, error) {
+func pingAndList(addr string, conn *mcnet.Conn, protocol int, hostname string) (*Status, time.Duration, error) {
 	// parse hostname and port
-	host, strPort, err := net.SplitHostPort(addr)
+	_, strPort, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, 0, fmt.Errorf("could not split host and port: %v", err)
 	}
-
 	port, err := strconv.ParseUint(strPort, 10, 16)
 	if err != nil {
 		return nil, 0, fmt.Errorf("port must be a number: %v", err)
@@ -45,7 +33,7 @@ func pingAndList(addr string, conn *mcnet.Conn, protocol int) (*Status, time.Dur
 	// handshake
 	err = conn.WritePacket(pk.Marshal(0x00, // packet ID
 		pk.VarInt(protocol),    // protocol version
-		pk.String(host),        // server host
+		pk.String(hostname),    // server host
 		pk.UnsignedShort(port), // server port
 		pk.Byte(1),             // next: ping
 	))

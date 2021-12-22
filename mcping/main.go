@@ -1,72 +1,105 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
-	"net"
-	"strconv"
-	"strings"
-
 	"github.com/go-mc/mcping"
 	"github.com/mattn/go-colorable"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"net"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"time"
 )
 
+type Config struct {
+	PromListen string   `json:"promListen"`
+	Targets    []string `json:"targets"`
+}
+
+var promListen = new(string)
+var targets = new([]string)
 var protocol = flag.Int("p", 578, "The minecraft protocol version")
-var favicon = flag.String("f", "", "Path to output server's icon")
 var output = colorable.NewColorableStdout()
 
-func main() {
-	flag.Parse()
-	addrs := lookupMC(flag.Arg(0))
+// Define prometheus counters
+var (
+	playerCount = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "mcping_playercount",
+		Help: "Number of connected players",
+	}, []string{"host"})
+	pingDelay = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "mcping_pingdelay",
+		Help: "Delay when dialing server",
+	}, []string{"host"})
+)
 
+// Main function
+func main() {
+	// Fetch config
+	jsonFile, err := os.Open("config.json")
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer jsonFile.Close()
+	var config Config
+	jsonParser := json.NewDecoder(jsonFile)
+	err = jsonParser.Decode(&config)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	*promListen = config.PromListen
+	*targets = config.Targets
+	// Start prom listener
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		err = http.ListenAndServe(*promListen, nil)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+	}()
+	// Start fetching targets
+	for {
+		fmt.Println("Fetching all targets...")
+		for _, host := range *targets {
+			fmt.Println("Fetching " + host)
+			players, delay := getServerStats(host)
+			playerCount.With(prometheus.Labels{"host": host}).Set(float64(players))
+			pingDelay.With(prometheus.Labels{"host": host}).Set(float64(delay))
+			fmt.Println("Fetched " + host + ": " + strconv.Itoa(players))
+		}
+		time.Sleep(time.Minute)
+	}
+}
+
+// Get target stats
+func getServerStats(host string) (playercount int, delay time.Duration) {
+	addrs := lookupMC(host)
 	for _, addr := range addrs {
-		fmt.Fprintf(output, "MCPING (%s):\n", addr)
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
 			fmt.Fprintf(output, "dial error: %v\n", err)
 			continue
 		}
-		status, delay, err := mcping.PingAndListConn(conn, *protocol)
+		hostname, _, err := net.SplitHostPort(addr)
+		status, delay, err := mcping.PingAndListConn(conn, *protocol, hostname)
 		if err != nil {
 			fmt.Fprintf(output, "error: %v\n", err)
 			continue
 		}
-
-		fmt.Fprintf(output,
-			`	server: %s
-	protocol: %d
-	description: 
-	%s
-	delay: %v
-	list: %d/%d
-`,
-			status.Version.Name,
-			status.Version.Protocol,
-			status.Description, delay,
-			status.Players.Online,
-			status.Players.Max)
-		for _, v := range status.Players.Sample {
-			fmt.Fprintf(output, "- [%s] %v\n", v.Name, v.ID)
-		}
-
-		if *favicon != "" {
-			fmt.Fprintf(output, "Save server's icon into %s\n", *favicon)
-			icon, err := status.Favicon.ToPNG()
-			if err != nil {
-				fmt.Fprintf(output, "error: %v\n", err)
-				continue
-			}
-			err = ioutil.WriteFile(*favicon, icon, 0666)
-			if err != nil {
-				fmt.Fprintf(output, "error: %v\n", err)
-				continue
-			}
-		}
+		return status.Players.Online, delay
 	}
+	return
 }
 
-// written after read mojang's code
+// Resolve domain and/or SRV record
 func lookupMC(addr string) (addrs []string) {
 	if !strings.Contains(addr, ":") {
 		_, addrsSRV, err := net.LookupSRV("minecraft", "tcp", addr)
