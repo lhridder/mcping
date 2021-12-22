@@ -47,10 +47,10 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	defer jsonFile.Close()
 	var config Config
 	jsonParser := json.NewDecoder(jsonFile)
 	err = jsonParser.Decode(&config)
+	jsonFile.Close()
 	if err != nil {
 		fmt.Println(err)
 		return
