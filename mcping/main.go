@@ -45,6 +45,7 @@ func main() {
 	jsonFile, err := os.Open("config.json")
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
 	defer jsonFile.Close()
 	var config Config
