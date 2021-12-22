@@ -1,50 +1,49 @@
 # mcping
 
-Ping your mincraft server with a simple command! This program can also download favicon.
+Ping your mincraft servers and save playercounts in prometheus
 
-```shell
-$ mcping play.miaoscraft.cn
-MCPING (play.miaoscraft.cn:25565):
-server: Spigot 1.15.2
-protocol: 578
-description: 
-Miaoscraft!
-delay: 42.200607ms
-list: 2/18
-- [defevt] 30e0098b-20a7-4067-b552-73517ad146dc
-- [Wizard_BOSS] 664b582d-8838-4761-b011-c3852004f47d
-
-```
-
-## install
+## Building
 
 ```shell
 $ go version # installed golang
 go version go1.13.4 darwin/amd64
-$ go get github.com/go-mc/mcping/mcping # install
+$ go get github.com/lhridder/mcping # install
+$ cd mcping
+$ go build .
 ```
 
-Please ensure `$GOPATH/bin` or `$GOBIN` is in your `$PATH`.Because mcping will be installed in `$(go env GOPATH)/bin`.
+## config example
 
-Or you can `go build` and move the executable to your `$PATH`. Or run it directly.
-
-## usage
-
-```shell
-mcping host:port			# ping specific server
-mcping host					# ping default port (25565)
-mcping -p 404 host	        # specific protocol version
-mcping -f icon.png host		# save server's favicon
-mcping -f="/path with spaces/icon.png" host
+```json
+{
+  "promListen": ":5000",
+  "targets": [
+    "play.hypixel.net",
+    "yourminecraftserver.net"
+  ]
+}
 ```
 
-> mcping will lookup SRV record if port is 25565 (include default set) as same as Minecraft itself.
+> mcping will lookup SRV record like minecraft clients do.
 
-## programming
-
-[![](https://img.shields.io/badge/godoc-reference-blue.svg)](https://pkg.go.dev/github.com/go-mc/mcping?tab=doc)
-
-```go
-import "github.com/go-mc/mcping"
+## Prometheus
+### Prometheus configuration:
+Example prometheus.yml configuration:
+```yaml
+scrape_configs:
+  - job_name: mcping
+    static_configs:
+    - targets: ['127.0.0.1:5000']
 ```
 
+### Metrics:
+* mcping_playercount: Number of connected players:
+    * **Example response:** `mcping_playercount{host="play.example.net", instance="localhost:5000", job="mcping"} 22`
+    * **host:** domain that was pinged.
+    * **instance:** what mcping instance supplied this information.
+    * **job:** what job was specified in the prometheus configuration.
+* mcping_pingdelay: Delay when dialing server:
+    * **Example response:** `mcping_pingdelay{host="play.example.net", instance="localhost:5000", job="mcping"} 2.6849949e+07`
+    * **host:** domain that was pinged.
+    * **instance:** what mcping instance supplied this information.
+    * **job:** what job was specified in the prometheus configuration.
