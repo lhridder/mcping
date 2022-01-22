@@ -16,6 +16,8 @@ $ go build .
 
 ```json
 {
+  "delay": 60,
+  "debug": true,
   "promListen": ":5000",
   "targets": [
     "play.hypixel.net",
