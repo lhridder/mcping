@@ -23,11 +23,8 @@ type Config struct {
 	Delay      int      `json:"delay"`
 }
 
-var promListen string
-var targets []string
-var delay int
+var config Config
 var protocol = flag.Int("p", 578, "The minecraft protocol version")
-var debug bool
 
 // Define prometheus counters
 var (
@@ -50,7 +47,6 @@ func main() {
 		return
 	}
 
-	var config Config
 	jsonParser := json.NewDecoder(jsonFile)
 	err = jsonParser.Decode(&config)
 	if err != nil {
@@ -62,15 +58,11 @@ func main() {
 		panic(err)
 	}
 
-	promListen = config.PromListen
-	targets = config.Targets
-	debug = config.Debug
-	delay = config.Delay
-	fmt.Println("Started mcping with debug mode: " + strconv.FormatBool(debug) + " with delay: " + strconv.Itoa(delay))
+	fmt.Println("Started mcping with debug mode: " + strconv.FormatBool(config.Debug) + " with delay: " + strconv.Itoa(config.Delay))
 	// Start prom listener
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
-		err = http.ListenAndServe(promListen, nil)
+		err = http.ListenAndServe(config.PromListen, nil)
 		if err != nil {
 			panic(err)
 			return
@@ -78,28 +70,28 @@ func main() {
 	}()
 	// Start fetching targets
 	for {
-		if debug {
+		if config.Debug {
 			fmt.Println("Fetching all targets...")
 		}
-		for _, host := range targets {
-			if debug {
+		for _, host := range config.Targets {
+			if config.Debug {
 				fmt.Println("Fetching " + host)
 			}
 			players, delay := getServerStats(host)
 			playerCount.With(prometheus.Labels{"host": host}).Set(float64(players))
 			pingDelay.With(prometheus.Labels{"host": host}).Set(float64(delay))
-			if debug {
+			if config.Debug {
 				fmt.Println("Fetched " + host + ": " + strconv.Itoa(players))
 			}
 		}
-		time.Sleep(time.Duration(delay) * time.Second)
+		time.Sleep(time.Duration(config.Delay) * time.Second)
 	}
 }
 
 // Get target stats
 func getServerStats(host string) (playercount int, delay time.Duration) {
 	addrs := lookupMC(host)
-	if debug {
+	if config.Debug {
 		fmt.Println("Found addrs: " + strings.Join(addrs, ","))
 	}
 	for _, addr := range addrs {
