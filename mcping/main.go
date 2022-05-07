@@ -3,11 +3,11 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
 	"github.com/go-mc/mcping"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -43,8 +43,7 @@ func main() {
 	// Fetch config
 	jsonFile, err := os.Open("config.json")
 	if err != nil {
-		fmt.Println(err)
-		return
+		panic(err)
 	}
 
 	jsonParser := json.NewDecoder(jsonFile)
@@ -58,7 +57,7 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println("Started mcping with debug mode: " + strconv.FormatBool(config.Debug) + " with delay: " + strconv.Itoa(config.Delay))
+	log.Println("Started mcping with debug mode: " + strconv.FormatBool(config.Debug) + " with delay: " + strconv.Itoa(config.Delay))
 	// Start prom listener
 	go func() {
 		http.Handle("/metrics", promhttp.Handler())
@@ -71,17 +70,17 @@ func main() {
 	// Start fetching targets
 	for {
 		if config.Debug {
-			fmt.Println("Fetching all targets...")
+			log.Println("Fetching all targets...")
 		}
 		for _, host := range config.Targets {
 			if config.Debug {
-				fmt.Println("Fetching " + host)
+				log.Println("Fetching " + host + "...")
 			}
 			players, delay := getServerStats(host)
 			playerCount.With(prometheus.Labels{"host": host}).Set(float64(players))
 			pingDelay.With(prometheus.Labels{"host": host}).Set(float64(delay))
 			if config.Debug {
-				fmt.Println("Fetched " + host + ": " + strconv.Itoa(players))
+				log.Println("Result: " + strconv.Itoa(players))
 			}
 		}
 		time.Sleep(time.Duration(config.Delay) * time.Second)
@@ -92,20 +91,18 @@ func main() {
 func getServerStats(host string) (playercount int, delay time.Duration) {
 	addrs := lookupMC(host)
 	if config.Debug {
-		fmt.Println("Found addrs: " + strings.Join(addrs, ","))
+		log.Println("Found addrs: " + strings.Join(addrs, ","))
 	}
 	for _, addr := range addrs {
 		conn, err := net.Dial("tcp", addr)
 		if err != nil {
-			fmt.Println("Dial error for " + addr + ": ")
-			fmt.Println(err)
+			log.Println("Dial error for " + addr + ": " + err.Error())
 			continue
 		}
 		hostname, _, _ := net.SplitHostPort(addr)
 		status, delay, err := mcping.PingAndListConn(conn, *protocol, hostname)
 		if err != nil {
-			fmt.Println("Ping error for " + addr + ": ")
-			fmt.Println(err)
+			log.Println("Ping error for " + addr + ": " + err.Error())
 			continue
 		}
 		return status.Players.Online, delay
